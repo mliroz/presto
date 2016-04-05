@@ -42,6 +42,7 @@ import static io.prestosql.spi.session.PropertyMetadata.stringProperty;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.spi.type.BooleanType.BOOLEAN;
 import static io.prestosql.spi.type.IntegerType.INTEGER;
+import static io.prestosql.spi.type.VarcharType.VARCHAR;
 import static io.prestosql.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.ELIMINATE_CROSS_JOINS;
 import static io.prestosql.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.NONE;
 import static java.lang.Math.min;
@@ -67,6 +68,7 @@ public final class SystemSessionProperties
     public static final String QUERY_MAX_RUN_TIME = "query_max_run_time";
     public static final String RESOURCE_OVERCOMMIT = "resource_overcommit";
     public static final String QUERY_MAX_CPU_TIME = "query_max_cpu_time";
+    public static final String QUERY_MAX_DATA_SIZE = "query_max_data_size";
     public static final String QUERY_MAX_STAGE_COUNT = "query_max_stage_count";
     public static final String REDISTRIBUTE_WRITES = "redistribute_writes";
     public static final String SCALE_WRITERS = "scale_writers";
@@ -248,6 +250,15 @@ public final class SystemSessionProperties
                         "Maximum amount of distributed total memory a query can use",
                         memoryManagerConfig.getMaxQueryTotalMemory(),
                         true),
+                new PropertyMetadata<>(
+                        QUERY_MAX_DATA_SIZE,
+                        "Maximum raw data size of a query",
+                        VARCHAR,
+                        DataSize.class,
+                        queryManagerConfig.getQueryMaxDataSize(),
+                        true,
+                        value -> DataSize.valueOf((String) value),
+                        DataSize::toString),
                 booleanProperty(
                         RESOURCE_OVERCOMMIT,
                         "Use resources which are not guaranteed to be available to the query",
@@ -615,6 +626,11 @@ public final class SystemSessionProperties
     public static DataSize getQueryMaxTotalMemory(Session session)
     {
         return session.getSystemProperty(QUERY_MAX_TOTAL_MEMORY, DataSize.class);
+    }
+
+    public static DataSize getQueryMaxDataSize(Session session)
+    {
+        return session.getSystemProperty(QUERY_MAX_DATA_SIZE, DataSize.class);
     }
 
     public static Duration getQueryMaxRunTime(Session session)

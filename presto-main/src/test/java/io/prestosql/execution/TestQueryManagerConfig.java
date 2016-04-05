@@ -15,11 +15,14 @@ package io.prestosql.execution;
 
 import com.google.common.collect.ImmutableMap;
 import io.airlift.configuration.testing.ConfigAssertions;
+import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import org.testng.annotations.Test;
 
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
+import static io.airlift.units.DataSize.Unit.TERABYTE;
 
 public class TestQueryManagerConfig
 {
@@ -46,6 +49,7 @@ public class TestQueryManagerConfig
                 .setQueryMaxRunTime(new Duration(100, TimeUnit.DAYS))
                 .setQueryMaxExecutionTime(new Duration(100, TimeUnit.DAYS))
                 .setQueryMaxCpuTime(new Duration(1_000_000_000, TimeUnit.DAYS))
+                .setQueryMaxDataSize(new DataSize(100, TERABYTE))
                 .setRequiredWorkers(1)
                 .setRequiredWorkersMaxWait(new Duration(5, TimeUnit.MINUTES)));
     }
@@ -73,6 +77,7 @@ public class TestQueryManagerConfig
                 .put("query.max-run-time", "2h")
                 .put("query.max-execution-time", "3h")
                 .put("query.max-cpu-time", "2d")
+                .put("query.max-data-size", "5TB")
                 .put("query-manager.required-workers", "333")
                 .put("query-manager.required-workers-max-wait", "33m")
                 .build();
@@ -97,6 +102,7 @@ public class TestQueryManagerConfig
                 .setQueryMaxRunTime(new Duration(2, TimeUnit.HOURS))
                 .setQueryMaxExecutionTime(new Duration(3, TimeUnit.HOURS))
                 .setQueryMaxCpuTime(new Duration(2, TimeUnit.DAYS))
+                .setQueryMaxDataSize(new DataSize(5, TERABYTE))
                 .setRequiredWorkers(333)
                 .setRequiredWorkersMaxWait(new Duration(33, TimeUnit.MINUTES));
 
