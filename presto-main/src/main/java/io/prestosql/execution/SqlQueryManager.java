@@ -17,6 +17,7 @@ import com.google.common.collect.Ordering;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.ThreadPoolExecutorMBean;
 import io.airlift.log.Logger;
+import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.prestosql.ExceededCpuLimitException;
 import io.prestosql.Session;
@@ -42,6 +43,7 @@ import javax.inject.Inject;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -53,7 +55,9 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.util.concurrent.Futures.immediateFailedFuture;
 import static io.airlift.concurrent.Threads.threadsNamed;
 import static io.prestosql.SystemSessionProperties.getQueryMaxCpuTime;
+import static io.prestosql.SystemSessionProperties.getQueryMaxDataSize;
 import static io.prestosql.execution.QueryState.RUNNING;
+import static io.prestosql.spi.StandardErrorCode.EXCEEDED_INPUT_DATA_SIZE_LIMIT;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -71,6 +75,7 @@ public class SqlQueryManager
     private final QueryTracker<QueryExecution> queryTracker;
 
     private final Duration maxQueryCpuTime;
+    private final Optional<DataSize> maxQueryInputDataSize;
 
     private final ExecutorService queryExecutor;
     private final ThreadPoolExecutorMBean queryExecutorMBean;
@@ -88,6 +93,7 @@ public class SqlQueryManager
         this.embedVersion = requireNonNull(embedVersion, "embedVersion is null");
 
         this.maxQueryCpuTime = queryManagerConfig.getQueryMaxCpuTime();
+        this.maxQueryInputDataSize = Optional.ofNullable(queryManagerConfig.getQueryMaxInputDataSize());
 
         this.queryExecutor = newCachedThreadPool(threadsNamed("query-scheduler-%s"));
         this.queryExecutorMBean = new ThreadPoolExecutorMBean((ThreadPoolExecutor) queryExecutor);
@@ -115,6 +121,13 @@ public class SqlQueryManager
             }
             catch (Throwable e) {
                 log.error(e, "Error enforcing query CPU time limits");
+            }
+
+            try {
+                enforceQueryMaxInputDataSizeLimits();
+            }
+            catch (Throwable e) {
+                log.error(e, "Error enforcing query raw data size limits");
             }
         }, 1, 1, TimeUnit.SECONDS);
     }
@@ -314,6 +327,25 @@ public class SqlQueryManager
             if (cpuTime.compareTo(limit) > 0) {
                 query.fail(new ExceededCpuLimitException(limit));
             }
+        }
+    }
+
+    /**
+     * Enforce max raw data size at the query level
+     */
+    public void enforceQueryMaxInputDataSizeLimits()
+    {
+        for (QueryExecution query : queryTracker.getAllQueries()) {
+            if (query.getState().isDone()) {
+                continue;
+            }
+            getQueryMaxDataSize(query.getSession())
+                    .flatMap(sessionLimit -> maxQueryInputDataSize.map(configuredLimit -> Ordering.natural().min(configuredLimit, sessionLimit)))
+                    .ifPresent(limit -> {
+                        if (limit.compareTo(query.getQueryInfo().getQueryStats().getRawInputDataSize()) > 0) {
+                            query.fail(new PrestoException(EXCEEDED_INPUT_DATA_SIZE_LIMIT, "Query exceeded maximum data size limit of " + limit));
+                        }
+                    });
         }
     }
 }
