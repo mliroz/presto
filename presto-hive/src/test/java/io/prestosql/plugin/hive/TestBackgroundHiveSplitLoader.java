@@ -323,6 +323,7 @@ public class TestBackgroundHiveSplitLoader
                 1,
                 1,
                 new DataSize(32, MEGABYTE),
+                Integer.MAX_VALUE,
                 backgroundHiveSplitLoader,
                 EXECUTOR,
                 new CounterStat());
