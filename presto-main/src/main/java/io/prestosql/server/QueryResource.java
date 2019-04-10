@@ -25,6 +25,8 @@ import io.prestosql.execution.QueryManager;
 import io.prestosql.execution.QueryState;
 import io.prestosql.execution.QueryStats;
 import io.prestosql.execution.StageId;
+import io.prestosql.server.extension.query.history.QueryHistoryStore;
+import io.prestosql.server.extension.query.history.QueryHistoryStoreFactory;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.QueryId;
 
@@ -35,6 +37,7 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 
@@ -47,6 +50,7 @@ import java.util.concurrent.TimeUnit;
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.prestosql.connector.system.KillQueryProcedure.createKillQueryException;
 import static io.prestosql.connector.system.KillQueryProcedure.createPreemptQueryException;
+import static io.prestosql.spi.StandardErrorCode.ADMINISTRATIVELY_KILLED;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -60,13 +64,16 @@ public class QueryResource
 
     // TODO There should be a combined interface for this
     private final DispatchManager dispatchManager;
+
     private final QueryManager queryManager;
+    private Optional<? extends QueryHistoryStore> queryHistoryStore;
 
     @Inject
     public QueryResource(DispatchManager dispatchManager, QueryManager queryManager)
     {
         this.dispatchManager = requireNonNull(dispatchManager, "dispatchManager is null");
         this.queryManager = requireNonNull(queryManager, "queryManager is null");
+        this.queryHistoryStore = QueryHistoryStoreFactory.getQueryHistoryStore();
     }
 
     @GET
@@ -101,7 +108,12 @@ public class QueryResource
                 return Response.ok(toFullQueryInfo(query)).build();
             }
         }
-        catch (NoSuchElementException ignored) {
+        catch (NoSuchElementException e) {
+            // Try to get query info (json) from history store
+            return queryHistoryStore.map(store -> store.getFullQueryInfo(queryId))
+                    .map(queryInfoJson -> Response.ok(queryInfoJson, MediaType.APPLICATION_JSON_TYPE))
+                    .orElseGet(() -> Response.status(Status.GONE))
+                    .build();
         }
 
         return Response.status(Status.GONE).build();
@@ -143,8 +155,8 @@ public class QueryResource
 
             queryManager.failQuery(queryId, queryException);
 
-            // verify if the query was failed (if not, we lost the race)
-            if (!queryException.getErrorCode().equals(queryManager.getQueryInfo(queryId).getErrorCode())) {
+            // verify if the query was killed (if not, we lost the race)
+            if (!ADMINISTRATIVELY_KILLED.toErrorCode().equals(queryManager.getQueryInfo(queryId).getErrorCode())) {
                 return Response.status(Status.CONFLICT).build();
             }
 
