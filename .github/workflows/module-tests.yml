@@ -94,7 +94,8 @@ jobs:
             !presto-redis,
             !presto-sqlserver,!presto-postgresql,!presto-mysql,
             !presto-phoenix,!presto-iceberg,
-            !presto-docs,!presto-server,!presto-server-rpm'
+            !presto-docs,!presto-server,!presto-server-rpm,
+            !presto-history-extension'
 
   x:
     runs-on: ubuntu-latest
@@ -114,6 +115,7 @@ jobs:
           "presto-redis",
           "presto-sqlserver,presto-postgresql,presto-mysql",
           "presto-phoenix,presto-iceberg",
+          "presto-history-extension",
         ]
     steps:
       - uses: actions/checkout@v1

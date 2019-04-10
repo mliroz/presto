@@ -17,6 +17,8 @@ import com.google.common.collect.ImmutableList;
 import io.prestosql.dispatcher.DispatchManager;
 import io.prestosql.execution.QueryInfo;
 import io.prestosql.execution.QueryState;
+import io.prestosql.server.extension.query.history.QueryHistoryStore;
+import io.prestosql.server.extension.query.history.QueryHistoryStoreFactory;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.QueryId;
 
@@ -27,6 +29,7 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 
@@ -46,11 +49,13 @@ import static java.util.Objects.requireNonNull;
 public class QueryResource
 {
     private final DispatchManager dispatchManager;
+    private Optional<? extends QueryHistoryStore> queryHistoryStore;
 
     @Inject
     public QueryResource(DispatchManager dispatchManager)
     {
         this.dispatchManager = requireNonNull(dispatchManager, "dispatchManager is null");
+        this.queryHistoryStore = QueryHistoryStoreFactory.getQueryHistoryStore();
     }
 
     @GET
@@ -76,7 +81,12 @@ public class QueryResource
         if (queryInfo.isPresent()) {
             return Response.ok(queryInfo.get()).build();
         }
-        return Response.status(Status.GONE).build();
+
+        // Try to get query info (json) from history store
+        return queryHistoryStore.map(store -> store.getFullQueryInfo(queryId))
+                .map(queryInfoJson -> Response.ok(queryInfoJson, MediaType.APPLICATION_JSON_TYPE))
+                .orElseGet(() -> Response.status(Status.GONE))
+                .build();
     }
 
     @DELETE
