@@ -19,6 +19,7 @@ matrix:
     - env: TEST_SPECIFIC_MODULES=presto-main
     - env: TEST_SPECIFIC_MODULES=presto-tests
     # Product tests are long. Start them early to reduce overall build latency.
+    - env: TEST_SPECIFIC_MODULES=presto-history-extension
     - env: PRODUCT_TESTS_SUITE=suite-1
     - env: PRODUCT_TESTS_SUITE=suite-2
     - env: PRODUCT_TESTS_SUITE=suite-3
@@ -35,7 +36,7 @@ matrix:
     #- env: TEST_SPECIFIC_MODULES=presto-redis
     - env: TEST_SPECIFIC_MODULES=presto-mysql #presto-sqlserver,presto-postgresql
     #- env: TEST_SPECIFIC_MODULES=presto-phoenix,presto-iceberg
-    - env: TEST_OTHER_MODULES=!presto-main,!presto-tests,!presto-raptor-legacy,!presto-accumulo,!presto-cassandra,!presto-hive,!presto-orc,!presto-parquet,!presto-mongodb,!presto-kafka,!presto-elasticsearch,!presto-redis,!presto-sqlserver,!presto-postgresql,!presto-mysql,!presto-phoenix,!presto-iceberg,!presto-kudu,!presto-docs,!presto-server,!presto-server-rpm
+    - env: TEST_OTHER_MODULES=!presto-main,!presto-tests,!presto-raptor-legacy,!presto-accumulo,!presto-cassandra,!presto-hive,!presto-orc,!presto-parquet,!presto-mongodb,!presto-kafka,!presto-elasticsearch,!presto-redis,!presto-sqlserver,!presto-postgresql,!presto-mysql,!presto-phoenix,!presto-iceberg,!presto-kudu,!presto-docs,!presto-server,!presto-server-rpm,!presto-history-extension
     - env: HIVE_TESTS=true
 #    - env: KUDU_TESTS=true
 
