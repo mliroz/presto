@@ -24,6 +24,7 @@ matrix:
     - env: TEST_SPECIFIC_MODULES=presto-hive
     - env: TEST_SPECIFIC_MODULES=presto-main
     - env: TEST_SPECIFIC_MODULES=presto-orc,presto-parquet
+    - env: TEST_SPECIFIC_MODULES=presto-history-extension
 #    - env: TEST_SPECIFIC_MODULES=presto-mongodb
 #    - env: TEST_SPECIFIC_MODULES=presto-redis
     - env: TEST_SPECIFIC_MODULES=presto-mysql #,presto-sqlserver,presto-postgresql
