@@ -310,6 +310,8 @@ public class HiveSplitManager
                     throw new HiveNotReadableException(tableName, Optional.of(partName), partitionNotReadable);
                 }
 
+                // CRITEO: We don't enforce the following constrains
+
                 // Verify that the partition schema matches the table schema.
                 // Either adding or dropping columns from the end of the table
                 // without modifying existing partitions is allowed, but every
@@ -320,25 +322,69 @@ public class HiveSplitManager
                 if ((tableColumns == null) || (partitionColumns == null)) {
                     throw new PrestoException(HIVE_INVALID_METADATA, format("Table '%s' or partition '%s' has null columns", tableName, partName));
                 }
+
                 ImmutableMap.Builder<Integer, HiveTypeName> columnCoercions = ImmutableMap.builder();
-                for (int i = 0; i < min(partitionColumns.size(), tableColumns.size()); i++) {
-                    HiveType tableType = tableColumns.get(i).getType();
-                    HiveType partitionType = partitionColumns.get(i).getType();
-                    if (!tableType.equals(partitionType)) {
-                        if (!coercionPolicy.canCoerce(partitionType, tableType)) {
-                            throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
-                                            "There is a mismatch between the table and partition schemas. " +
-                                            "The types are incompatible and cannot be coerced. " +
-                                            "The column '%s' in table '%s' is declared as type '%s', " +
-                                            "but partition '%s' declared column '%s' as type '%s'.",
-                                    tableColumns.get(i).getName(),
-                                    tableName,
-                                    tableType,
-                                    partName,
-                                    partitionColumns.get(i).getName(),
-                                    partitionType));
+
+                // In the case of Parquet useColumnNames
+                // This is not a clean fix: it assume useColumnNames is set to true
+                // To make it clean we need to change the API to get the config parameters for both parquet & ORC
+                boolean isParquetFormat = HiveStorageFormat.PARQUET.getSerDe().equals(partition.getStorage().getStorageFormat().getSerDe());
+                if (isParquetFormat) {
+                    ImmutableMap<String, Column> partitionsColsByName = ImmutableMap.of();
+                    ImmutableMap.Builder<String, Column> partitionsColsByNameBuilder = ImmutableMap.builder();
+                    for (Column partitionColumn : partitionColumns) {
+                        partitionsColsByNameBuilder.put(partitionColumn.getName(), partitionColumn);
+                    }
+                    partitionsColsByName = partitionsColsByNameBuilder.build();
+
+                    for (int i = 0; i < tableColumns.size(); i++) {
+                        final int tableIndex = i;
+                        Column tableColumn = tableColumns.get(tableIndex);
+                        String tableColumnName = tableColumn.getName();
+                        HiveType tableType = tableColumn.getType();
+                        Optional.ofNullable(partitionsColsByName.get(tableColumnName))
+                                .map(Column::getType)
+                                .ifPresent(partitionType -> {
+                                    if (!tableType.equals(partitionType)) {
+                                        if (!coercionPolicy.canCoerce(partitionType, tableType)) {
+                                            throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
+                                                            "There is a mismatch between the table and partition schemas. " +
+                                                            "The types are incompatible and cannot be coerced. " +
+                                                            "The column '%s' in table '%s' is declared as type '%s', " +
+                                                            "but partition '%s' declared column '%s' as type '%s'.",
+                                                    tableColumnName,
+                                                    tableName,
+                                                    tableType,
+                                                    partName,
+                                                    tableColumnName,
+                                                    partitionType));
+                                        }
+                                        columnCoercions.put(tableIndex, partitionType.getHiveTypeName());
+                                    }
+                                });
+                    }
+                }
+                else {
+                    for (int i = 0; i < min(partitionColumns.size(), tableColumns.size()); i++) {
+                        HiveType tableType = tableColumns.get(i).getType();
+                        HiveType partitionType = partitionColumns.get(i).getType();
+
+                        if (!tableType.equals(partitionType)) {
+                            if (!coercionPolicy.canCoerce(partitionType, tableType)) {
+                                throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
+                                                "There is a mismatch between the table and partition schemas. " +
+                                                "The types are incompatible and cannot be coerced. " +
+                                                "The column '%s' in table '%s' is declared as type '%s', " +
+                                                "but partition '%s' declared column '%s' as type '%s'.",
+                                        tableColumns.get(i).getName(),
+                                        tableName,
+                                        tableType,
+                                        partName,
+                                        partitionColumns.get(i).getName(),
+                                        partitionType));
+                            }
+                            columnCoercions.put(i, partitionType.getHiveTypeName());
                         }
-                        columnCoercions.put(i, partitionType.getHiveTypeName());
                     }
                 }
 
