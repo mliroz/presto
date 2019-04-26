@@ -33,7 +33,6 @@ import static io.prestosql.plugin.hive.HiveType.HIVE_INT;
 import static io.prestosql.plugin.hive.HiveType.HIVE_LONG;
 import static io.prestosql.plugin.hive.HiveType.HIVE_SHORT;
 import static io.prestosql.plugin.hive.HiveUtil.extractStructFieldTypes;
-import static java.lang.Math.min;
 import static java.util.Objects.requireNonNull;
 
 public class HiveCoercionPolicy
@@ -113,15 +112,16 @@ public class HiveCoercionPolicy
         List<HiveType> fromFieldTypes = extractStructFieldTypes(fromHiveType);
         List<HiveType> toFieldTypes = extractStructFieldTypes(toHiveType);
         // Rule:
-        // * Fields may be added or dropped from the end.
-        // * For all other field indices, the corresponding fields must have
-        //   the same name, and the type must be coercible.
-        for (int i = 0; i < min(fromFieldTypes.size(), toFieldTypes.size()); i++) {
-            if (!fromFieldNames.get(i).equals(toFieldNames.get(i))) {
-                return false;
-            }
-            if (!fromFieldTypes.get(i).equals(toFieldTypes.get(i)) && !canCoerce(fromFieldTypes.get(i), toFieldTypes.get(i))) {
-                return false;
+        // * Fields may be added or dropped.
+        // * A field with a given name must be of the same type or coercible.
+        for (int toIdx = 0; toIdx < toFieldTypes.size(); toIdx++) {
+            int fromIdx = fromFieldNames.indexOf(toFieldNames.get(toIdx));
+            if (fromIdx >= 0) {
+                HiveType fromType = fromFieldTypes.get(fromIdx);
+                HiveType toType = toFieldTypes.get(toIdx);
+                if (!fromType.equals(toType) && !canCoerce(fromType, toType)) {
+                    return false;
+                }
             }
         }
         return true;
