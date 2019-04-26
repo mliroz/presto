@@ -302,6 +302,8 @@ public class HiveSplitManager
                     throw new HiveNotReadableException(tableName, Optional.of(partName), partitionNotReadable);
                 }
 
+                // CRITEO: We don't enforce the following constrains
+
                 // Verify that the partition schema matches the table schema.
                 // Either adding or dropping columns from the end of the table
                 // without modifying existing partitions is allowed, but every
@@ -312,11 +314,37 @@ public class HiveSplitManager
                 if ((tableColumns == null) || (partitionColumns == null)) {
                     throw new PrestoException(HIVE_INVALID_METADATA, format("Table '%s' or partition '%s' has null columns", tableName, partName));
                 }
+
+                // In the case of Parquet useColumnNames
+                // This is not a clean fix: it assume useColumnNames is set to true
+                // To make it clean we need to change the API to get the config parameters for both parquet & ORC
+                boolean isParquetFormat = HiveStorageFormat.PARQUET.getSerDe().equals(partition.getStorage().getStorageFormat().getSerDe());
+                ImmutableMap<String, Column> partitionsColsByName = ImmutableMap.of();
+                if (isParquetFormat) {
+                    ImmutableMap.Builder<String, Column> partitionsColsByNameBuilder = ImmutableMap.builder();
+                    for (Column partitionColumn : partitionColumns) {
+                        partitionsColsByNameBuilder.put(partitionColumn.getName(), partitionColumn);
+                    }
+                    partitionsColsByName = partitionsColsByNameBuilder.build();
+                }
+
                 ImmutableMap.Builder<Integer, HiveTypeName> columnCoercions = ImmutableMap.builder();
                 for (int i = 0; i < min(partitionColumns.size(), tableColumns.size()); i++) {
                     HiveType tableType = tableColumns.get(i).getType();
                     HiveType partitionType = partitionColumns.get(i).getType();
-                    if (!tableType.equals(partitionType)) {
+
+                    // Custom
+                    String tableColumnName = tableColumns.get(i).getName();
+                    if (isParquetFormat) {
+                        if (!partitionsColsByName.containsKey(tableColumnName)) {
+                            partitionType = null; // columns renames aren't supported
+                        }
+                        else {
+                            partitionType = partitionsColsByName.get(tableColumns.get(i).getName()).getType();
+                        }
+                    }
+
+                    if (partitionType != null && !tableType.equals(partitionType)) {
                         if (!coercionPolicy.canCoerce(partitionType, tableType)) {
                             throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
                                             "There is a mismatch between the table and partition schemas. " +
