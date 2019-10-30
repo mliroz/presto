@@ -49,7 +49,8 @@ public abstract class AbstractTestSessionPropertyManager
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(Pattern.compile("global.pipeline.user_.*")),
-                properties);
+                properties,
+                ImmutableMap.of());
 
         assertProperties(properties, spec);
     }
@@ -65,7 +66,8 @@ public abstract class AbstractTestSessionPropertyManager
                 Optional.of(ImmutableList.of("tag2")),
                 Optional.empty(),
                 Optional.empty(),
-                properties);
+                properties,
+                ImmutableMap.of());
 
         assertProperties(properties, spec);
     }
@@ -80,14 +82,16 @@ public abstract class AbstractTestSessionPropertyManager
                 Optional.of(ImmutableList.of("tag2")),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of("PROPERTY1", "VALUE1", "PROPERTY3", "VALUE3"));
+                ImmutableMap.of("PROPERTY1", "VALUE1", "PROPERTY3", "VALUE3"),
+                ImmutableMap.of());
         SessionMatchSpec spec2 = new SessionMatchSpec(
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(ImmutableList.of("tag1", "tag2")),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableMap.of("PROPERTY1", "VALUE1", "PROPERTY2", "VALUE2"));
+                ImmutableMap.of("PROPERTY1", "VALUE1", "PROPERTY2", "VALUE2"),
+                ImmutableMap.of());
 
         assertProperties(ImmutableMap.of("PROPERTY1", "VALUE1", "PROPERTY2", "VALUE2", "PROPERTY3", "VALUE3"), spec1, spec2);
     }
@@ -102,7 +106,8 @@ public abstract class AbstractTestSessionPropertyManager
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(Pattern.compile("global.interactive.user_.*")),
-                ImmutableMap.of("PROPERTY", "VALUE"));
+                ImmutableMap.of("PROPERTY", "VALUE"),
+                ImmutableMap.of());
 
         assertProperties(ImmutableMap.of(), spec);
     }
