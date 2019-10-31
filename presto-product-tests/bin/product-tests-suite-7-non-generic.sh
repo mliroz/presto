@@ -19,30 +19,30 @@ presto-product-tests/bin/run_on_docker.sh \
     || exit_code=1
 
 # Does not use hadoop
-presto-product-tests/bin/run_on_docker.sh \
-    singlenode-postgresql \
-    -g postgresql \
-    || exit_code=1
+#presto-product-tests/bin/run_on_docker.sh \
+#    singlenode-postgresql \
+#    -g postgresql \
+#    || exit_code=1
 
 # Does not use hadoop
-presto-product-tests/bin/run_on_docker.sh \
-    singlenode-sqlserver \
-    -g sqlserver \
-    || exit_code=1
+#presto-product-tests/bin/run_on_docker.sh \
+#    singlenode-sqlserver \
+#    -g sqlserver \
+#    || exit_code=1
 
-presto-product-tests/bin/run_on_docker.sh \
-    two-mixed-hives \
-    -g two_hives \
-    || exit_code=1
+#presto-product-tests/bin/run_on_docker.sh \
+#    two-mixed-hives \
+#    -g two_hives \
+#    || exit_code=1
 
-presto-product-tests/bin/run_on_docker.sh \
-    two-kerberos-hives \
-    -g two_hives \
-    || exit_code=1
+#presto-product-tests/bin/run_on_docker.sh \
+#    two-kerberos-hives \
+#    -g two_hives \
+#    || exit_code=1
 
-presto-product-tests/bin/run_on_docker.sh \
-    singlenode-hdp3 \
-    -g hdp3_only,storage_formats,hive_transactional \
-    || exit_code=1
+#presto-product-tests/bin/run_on_docker.sh \
+#    singlenode-hdp3 \
+#    -g hdp3_only,storage_formats,hive_transactional \
+#    || exit_code=1
 
 exit "${exit_code}"
