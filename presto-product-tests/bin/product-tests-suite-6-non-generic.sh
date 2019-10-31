@@ -32,15 +32,15 @@ presto-product-tests/bin/run_on_docker.sh \
     || exit_code=1
 
 # Does not use hadoop
-presto-product-tests/bin/run_on_docker.sh \
-    singlenode-cassandra \
-    -g cassandra \
-    || exit_code=1
+#presto-product-tests/bin/run_on_docker.sh \
+#    singlenode-cassandra \
+#    -g cassandra \
+#    || exit_code=1
 
 # Does not use hadoop
-presto-product-tests/bin/run_on_docker.sh \
-    singlenode-kafka \
-    -g kafka \
-    || exit_code=1
+#presto-product-tests/bin/run_on_docker.sh \
+#    singlenode-kafka \
+#    -g kafka \
+#    || exit_code=1
 
 exit "${exit_code}"
