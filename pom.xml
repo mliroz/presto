@@ -139,7 +139,7 @@
         <module>presto-proxy</module>
         <module>presto-kudu</module>
         <module>presto-elasticsearch</module>
-        <module>presto-iceberg</module>
+        <!-- <module>presto-iceberg</module> -->
         <module>presto-google-sheets</module>
     </modules>
 
@@ -237,13 +237,13 @@
                 <artifactId>presto-hive-hadoop2</artifactId>
                 <version>${project.version}</version>
             </dependency>
-
+<!--
             <dependency>
                 <groupId>io.prestosql</groupId>
                 <artifactId>presto-iceberg</artifactId>
                 <version>${project.version}</version>
             </dependency>
-
+-->
             <dependency>
                 <groupId>io.prestosql</groupId>
                 <artifactId>presto-example-http</artifactId>
