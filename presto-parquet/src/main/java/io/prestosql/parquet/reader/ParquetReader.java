@@ -184,14 +184,20 @@ public class ParquetReader
     {
         List<Type> parameters = field.getType().getTypeParameters();
         checkArgument(parameters.size() == 1, "Arrays must have a single type parameter, found %s", parameters.size());
-        Field elementField = field.getChildren().get(0).get();
-        ColumnChunk columnChunk = readColumnChunk(elementField);
-        IntList offsets = new IntArrayList();
-        BooleanList valueIsNull = new BooleanArrayList();
 
-        calculateCollectionOffsets(field, offsets, valueIsNull, columnChunk.getDefinitionLevels(), columnChunk.getRepetitionLevels());
-        Block arrayBlock = ArrayBlock.fromElementBlock(valueIsNull.size(), Optional.of(valueIsNull.toBooleanArray()), offsets.toIntArray(), columnChunk.getBlock());
-        return new ColumnChunk(arrayBlock, columnChunk.getDefinitionLevels(), columnChunk.getRepetitionLevels());
+        Optional<Field> elementFieldOpt = field.getChildren().get(0);
+        if (!elementFieldOpt.isPresent()) {
+            return createColumnChunkOfNulls(field);
+        }
+        else {
+            ColumnChunk columnChunk = readColumnChunk(elementFieldOpt.get());
+            IntList offsets = new IntArrayList();
+            BooleanList valueIsNull = new BooleanArrayList();
+
+            calculateCollectionOffsets(field, offsets, valueIsNull, columnChunk.getDefinitionLevels(), columnChunk.getRepetitionLevels());
+            Block arrayBlock = ArrayBlock.fromElementBlock(valueIsNull.size(), Optional.of(valueIsNull.toBooleanArray()), offsets.toIntArray(), columnChunk.getBlock());
+            return new ColumnChunk(arrayBlock, columnChunk.getDefinitionLevels(), columnChunk.getRepetitionLevels());
+        }
     }
 
     private ColumnChunk readMap(GroupField field)
@@ -201,9 +207,14 @@ public class ParquetReader
         checkArgument(parameters.size() == 2, "Maps must have two type parameters, found %s", parameters.size());
         Block[] blocks = new Block[parameters.size()];
 
-        ColumnChunk columnChunk = readColumnChunk(field.getChildren().get(0).get());
+        Optional<Field> keyField = field.getChildren().get(0);
+        Optional<Field> valueField = field.getChildren().get(1);
+        if (!keyField.isPresent() || !valueField.isPresent()) {
+            return createColumnChunkOfNulls(field);
+        }
+        ColumnChunk columnChunk = readColumnChunk(keyField.get());
         blocks[0] = columnChunk.getBlock();
-        blocks[1] = readColumnChunk(field.getChildren().get(1).get()).getBlock();
+        blocks[1] = readColumnChunk(valueField.get()).getBlock();
         IntList offsets = new IntArrayList();
         BooleanList valueIsNull = new BooleanArrayList();
         calculateCollectionOffsets(field, offsets, valueIsNull, columnChunk.getDefinitionLevels(), columnChunk.getRepetitionLevels());
@@ -266,6 +277,16 @@ public class ParquetReader
             maxBytesPerCell[fieldId] = bytesPerCell;
         }
         return columnChunk;
+    }
+
+    private ColumnChunk createColumnChunkOfNulls(Field field)
+    {
+        Block emptyValueBlock = RunLengthEncodedBlock.create(field.getType(), null, batchSize);
+        int[] definitionLevels = new int[batchSize];
+        Arrays.fill(definitionLevels, field.getDefinitionLevel());
+        int[] repetitionLevels = new int[batchSize];
+        Arrays.fill(repetitionLevels, field.getRepetitionLevel());
+        return new ColumnChunk(emptyValueBlock, definitionLevels, repetitionLevels);
     }
 
     private ColumnChunkMetaData getColumnChunkMetaData(BlockMetaData blockMetaData, ColumnDescriptor columnDescriptor)
