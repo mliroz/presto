@@ -106,6 +106,7 @@ public class HiveConfig
     private DataSize textMaxLineLength = new DataSize(100, MEGABYTE);
 
     private boolean useParquetColumnNames;
+    private boolean useParquetNameBasedSchemaEvolution;
     private boolean failOnCorruptedParquetStatistics = true;
     private DataSize parquetMaxReadBlockSize = new DataSize(16, MEGABYTE);
 
@@ -888,6 +889,19 @@ public class HiveConfig
     public HiveConfig setUseParquetColumnNames(boolean useParquetColumnNames)
     {
         this.useParquetColumnNames = useParquetColumnNames;
+        return this;
+    }
+
+    public boolean isUseParquetNameBasedSchemaEvolution()
+    {
+        return this.useParquetNameBasedSchemaEvolution;
+    }
+
+    @Config("hive.parquet.use-name-based-schema-evolution")
+    @ConfigDescription("Access Parquet columns using names from the file")
+    public HiveConfig setUseParquetNameBasedSchemaEvolution(boolean useParquetNameBasedSchemaEvolution)
+    {
+        this.useParquetNameBasedSchemaEvolution = useParquetNameBasedSchemaEvolution;
         return this;
     }
 
