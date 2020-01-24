@@ -64,6 +64,8 @@ import static io.prestosql.plugin.hive.HiveErrorCode.HIVE_PARTITION_DROPPED_DURI
 import static io.prestosql.plugin.hive.HiveErrorCode.HIVE_PARTITION_SCHEMA_MISMATCH;
 import static io.prestosql.plugin.hive.HivePartition.UNPARTITIONED_ID;
 import static io.prestosql.plugin.hive.HiveSessionProperties.isIgnoreAbsentPartitions;
+import static io.prestosql.plugin.hive.HiveSessionProperties.isUseParquetColumnNames;
+import static io.prestosql.plugin.hive.HiveSessionProperties.isUseParquetNameBasedSchemaEvolution;
 import static io.prestosql.plugin.hive.metastore.MetastoreUtil.getProtectMode;
 import static io.prestosql.plugin.hive.metastore.MetastoreUtil.makePartitionName;
 import static io.prestosql.plugin.hive.metastore.MetastoreUtil.verifyOnline;
@@ -317,34 +319,74 @@ public class HiveSplitManager
                 }
 
                 // Verify that the partition schema matches the table schema.
-                // Either adding or dropping columns from the end of the table
-                // without modifying existing partitions is allowed, but every
-                // column that exists in both the table and partition must have
-                // the same type.
                 List<Column> tableColumns = table.getDataColumns();
                 List<Column> partitionColumns = partition.getColumns();
                 if ((tableColumns == null) || (partitionColumns == null)) {
                     throw new PrestoException(HIVE_INVALID_METADATA, format("Table '%s' or partition '%s' has null columns", tableName, partName));
                 }
+
                 ImmutableMap.Builder<Integer, HiveTypeName> columnCoercions = ImmutableMap.builder();
-                for (int i = 0; i < min(partitionColumns.size(), tableColumns.size()); i++) {
-                    HiveType tableType = tableColumns.get(i).getType();
-                    HiveType partitionType = partitionColumns.get(i).getType();
-                    if (!tableType.equals(partitionType)) {
-                        if (!coercionPolicy.canCoerce(partitionType, tableType)) {
-                            throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
-                                            "There is a mismatch between the table and partition schemas. " +
-                                            "The types are incompatible and cannot be coerced. " +
-                                            "The column '%s' in table '%s' is declared as type '%s', " +
-                                            "but partition '%s' declared column '%s' as type '%s'.",
-                                    tableColumns.get(i).getName(),
-                                    tableName,
-                                    tableType,
-                                    partName,
-                                    partitionColumns.get(i).getName(),
-                                    partitionType));
+
+                if (useParquetSchemaEvolutionSupport(session, partition)) {
+                    ImmutableMap.Builder<String, Column> partitionsColsByNameBuilder = ImmutableMap.builder();
+                    for (Column partitionColumn : partitionColumns) {
+                        partitionsColsByNameBuilder.put(partitionColumn.getName(), partitionColumn);
+                    }
+                    ImmutableMap<String, Column> partitionsColsByName = partitionsColsByNameBuilder.build();
+
+                    for (int i = 0; i < tableColumns.size(); i++) {
+                        final int tableIndex = i;
+                        Column tableColumn = tableColumns.get(tableIndex);
+                        String tableColumnName = tableColumn.getName();
+                        HiveType tableType = tableColumn.getType();
+                        Optional.ofNullable(partitionsColsByName.get(tableColumnName))
+                                .map(Column::getType)
+                                .ifPresent(partitionType -> {
+                                    if (!tableType.equals(partitionType)) {
+                                        Optional<HiveType> middleGround = coercionPolicy.coercionMiddleGround(partitionType, tableType);
+                                        if (!middleGround.isPresent()) {
+                                            throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
+                                                            "There is a invalid schema change between table and partition schemas. " +
+                                                            "The types are incompatible and cannot be coerced. " +
+                                                            "The column '%s' in table '%s' is declared as type '%s', " +
+                                                            "but partition '%s' declared column '%s' as type '%s'.",
+                                                    tableColumnName,
+                                                    tableName,
+                                                    tableType,
+                                                    partName,
+                                                    tableColumnName,
+                                                    partitionType));
+                                        }
+                                        columnCoercions.put(tableIndex, middleGround.get().getHiveTypeName());
+                                    }
+                                });
+                    }
+                }
+                // Either adding or dropping columns from the end of the table
+                // without modifying existing partitions is allowed, but every
+                // column that exists in both the table and partition must have
+                // the same type.
+                else {
+                    for (int i = 0; i < min(partitionColumns.size(), tableColumns.size()); i++) {
+                        HiveType tableType = tableColumns.get(i).getType();
+                        HiveType partitionType = partitionColumns.get(i).getType();
+
+                        if (!tableType.equals(partitionType)) {
+                            if (!coercionPolicy.canCoerce(partitionType, tableType)) {
+                                throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
+                                                "There is a mismatch between the table and partition schemas. " +
+                                                "The types are incompatible and cannot be coerced. " +
+                                                "The column '%s' in table '%s' is declared as type '%s', " +
+                                                "but partition '%s' declared column '%s' as type '%s'.",
+                                        tableColumns.get(i).getName(),
+                                        tableName,
+                                        tableType,
+                                        partName,
+                                        partitionColumns.get(i).getName(),
+                                        partitionType));
+                            }
+                            columnCoercions.put(i, partitionType.getHiveTypeName());
                         }
-                        columnCoercions.put(i, partitionType.getHiveTypeName());
                     }
                 }
 
@@ -378,6 +420,12 @@ public class HiveSplitManager
             return results.build();
         });
         return concat(partitionBatches);
+    }
+
+    static boolean useParquetSchemaEvolutionSupport(ConnectorSession session, Partition partition)
+    {
+        boolean isParquetFormat = HiveStorageFormat.PARQUET.getSerDe().equals(partition.getStorage().getStorageFormat().getSerDe());
+        return isParquetFormat && isUseParquetColumnNames(session) && isUseParquetNameBasedSchemaEvolution(session);
     }
 
     static boolean isBucketCountCompatible(int tableBucketCount, int partitionBucketCount)

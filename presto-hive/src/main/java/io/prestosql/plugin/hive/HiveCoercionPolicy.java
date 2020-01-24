@@ -21,10 +21,13 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
 import org.apache.hadoop.hive.serde2.typeinfo.ListTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.MapTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 
 import javax.inject.Inject;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static io.prestosql.plugin.hive.HiveType.HIVE_BYTE;
 import static io.prestosql.plugin.hive.HiveType.HIVE_DOUBLE;
@@ -33,7 +36,6 @@ import static io.prestosql.plugin.hive.HiveType.HIVE_INT;
 import static io.prestosql.plugin.hive.HiveType.HIVE_LONG;
 import static io.prestosql.plugin.hive.HiveType.HIVE_SHORT;
 import static io.prestosql.plugin.hive.util.HiveUtil.extractStructFieldTypes;
-import static java.lang.Math.min;
 import static java.util.Objects.requireNonNull;
 
 public class HiveCoercionPolicy
@@ -48,36 +50,111 @@ public class HiveCoercionPolicy
     }
 
     @Override
+    public Optional<HiveType> coercionMiddleGround(HiveType fromHiveType, HiveType toHiveType)
+    {
+        if (fromHiveType.equals(toHiveType) || canCoerceForPrimitive(fromHiveType, toHiveType)) {
+            return Optional.of(fromHiveType);
+        }
+        Optional<HiveType> listOpt = coercionMiddleGroundForList(fromHiveType, toHiveType);
+        if (listOpt.isPresent()) {
+            return listOpt;
+        }
+        Optional<HiveType> structOpt = coercionMiddleGroundForStruct(fromHiveType, toHiveType);
+        if (structOpt.isPresent()) {
+            return structOpt;
+        }
+        Optional<HiveType> mapOpt = coercionMiddleGroundForMap(fromHiveType, toHiveType);
+        if (mapOpt.isPresent()) {
+            return mapOpt;
+        }
+        return Optional.empty();
+    }
+
+    private Optional<HiveType> coercionMiddleGroundForMap(HiveType fromHiveType, HiveType toHiveType)
+    {
+        if (!fromHiveType.getCategory().equals(Category.MAP) || !toHiveType.getCategory().equals(Category.MAP)) {
+            return Optional.empty();
+        }
+        MapTypeInfo fromMapTypeInfo = (MapTypeInfo) fromHiveType.getTypeInfo();
+        HiveType fromKeyType = HiveType.valueOf(fromMapTypeInfo.getMapKeyTypeInfo().getTypeName());
+        HiveType fromValueType = HiveType.valueOf(fromMapTypeInfo.getMapValueTypeInfo().getTypeName());
+        HiveType toKeyType = HiveType.valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
+        HiveType toValueType = HiveType.valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
+        if (!fromKeyType.equals(toKeyType)) {
+            Optional<HiveType> keyOpt = coercionMiddleGround(fromKeyType, toKeyType);
+            if (!keyOpt.isPresent()) {
+                return Optional.empty();
+            }
+            fromMapTypeInfo.setMapKeyTypeInfo(keyOpt.get().getTypeInfo());
+        }
+        if (!fromValueType.equals(toValueType)) {
+            Optional<HiveType> valOpt = coercionMiddleGround(fromValueType, toValueType);
+            if (!valOpt.isPresent()) {
+                return Optional.empty();
+            }
+            fromMapTypeInfo.setMapValueTypeInfo(valOpt.get().getTypeInfo());
+        }
+        return Optional.of(HiveType.valueOf(fromMapTypeInfo.getTypeName()));
+    }
+
+    private Optional<HiveType> coercionMiddleGroundForList(HiveType fromHiveType, HiveType toHiveType)
+    {
+        if (!fromHiveType.getCategory().equals(Category.LIST) || !toHiveType.getCategory().equals(Category.LIST)) {
+            return Optional.empty();
+        }
+        ListTypeInfo fromListTypeInfo = (ListTypeInfo) fromHiveType.getTypeInfo();
+        HiveType fromElementType = HiveType.valueOf(fromListTypeInfo.getListElementTypeInfo().getTypeName());
+        HiveType toElementType = HiveType.valueOf(((ListTypeInfo) toHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
+        if (fromElementType.equals(toElementType)) {
+            return Optional.of(fromHiveType);
+        }
+        else {
+            return coercionMiddleGround(fromElementType, toElementType)
+                    .map(elementsTypeMiddleGround -> {
+                        fromListTypeInfo.setListElementTypeInfo(elementsTypeMiddleGround.getTypeInfo());
+                        return HiveType.valueOf(fromListTypeInfo.getTypeName());
+                    });
+        }
+    }
+
+    private Optional<HiveType> coercionMiddleGroundForStruct(HiveType fromHiveType, HiveType toHiveType)
+    {
+        if (!fromHiveType.getCategory().equals(Category.STRUCT) || !toHiveType.getCategory().equals(Category.STRUCT)) {
+            return Optional.empty();
+        }
+        List<String> fromFieldNames = ((StructTypeInfo) fromHiveType.getTypeInfo()).getAllStructFieldNames();
+        StructTypeInfo toStructTypeInfo = (StructTypeInfo) toHiveType.getTypeInfo();
+        List<String> toFieldNames = toStructTypeInfo.getAllStructFieldNames();
+        List<HiveType> fromFieldTypes = extractStructFieldTypes(fromHiveType);
+        List<HiveType> toFieldTypes = extractStructFieldTypes(toHiveType);
+
+        // Rule:
+        // * Fields may be added or dropped.
+        // * A field with a given name must be of the same type or coercible.
+        ArrayList<TypeInfo> toMiddleGround = new ArrayList<>(((StructTypeInfo) toHiveType.getTypeInfo()).getAllStructFieldTypeInfos());
+        for (int toIdx = 0; toIdx < toFieldTypes.size(); toIdx++) {
+            int fromIdx = fromFieldNames.indexOf(toFieldNames.get(toIdx));
+            if (fromIdx >= 0) {
+                HiveType fromType = fromFieldTypes.get(fromIdx);
+                HiveType toType = toFieldTypes.get(toIdx);
+                Optional<HiveType> structFieldMiddleGround = coercionMiddleGround(fromType, toType);
+                if (!structFieldMiddleGround.isPresent()) {
+                    return Optional.empty();
+                }
+                toMiddleGround.set(toIdx, structFieldMiddleGround.get().getTypeInfo());
+            }
+        }
+        toStructTypeInfo.setAllStructFieldTypeInfos(toMiddleGround);
+        return Optional.of(HiveType.valueOf(toStructTypeInfo.getTypeName()));
+    }
+
+    @Override
     public boolean canCoerce(HiveType fromHiveType, HiveType toHiveType)
     {
-        Type fromType = typeManager.getType(fromHiveType.getTypeSignature());
-        Type toType = typeManager.getType(toHiveType.getTypeSignature());
-        if (fromType instanceof VarcharType) {
-            return toHiveType.equals(HIVE_BYTE) || toHiveType.equals(HIVE_SHORT) || toHiveType.equals(HIVE_INT) || toHiveType.equals(HIVE_LONG);
-        }
-        if (toType instanceof VarcharType) {
-            return fromHiveType.equals(HIVE_BYTE) || fromHiveType.equals(HIVE_SHORT) || fromHiveType.equals(HIVE_INT) || fromHiveType.equals(HIVE_LONG);
-        }
-        if (fromHiveType.equals(HIVE_BYTE)) {
-            return toHiveType.equals(HIVE_SHORT) || toHiveType.equals(HIVE_INT) || toHiveType.equals(HIVE_LONG);
-        }
-        if (fromHiveType.equals(HIVE_SHORT)) {
-            return toHiveType.equals(HIVE_INT) || toHiveType.equals(HIVE_LONG);
-        }
-        if (fromHiveType.equals(HIVE_INT)) {
-            return toHiveType.equals(HIVE_LONG);
-        }
-        if (fromHiveType.equals(HIVE_FLOAT)) {
-            return toHiveType.equals(HIVE_DOUBLE) || toType instanceof DecimalType;
-        }
-        if (fromHiveType.equals(HIVE_DOUBLE)) {
-            return toHiveType.equals(HIVE_FLOAT) || toType instanceof DecimalType;
-        }
-        if (fromType instanceof DecimalType) {
-            return toType instanceof DecimalType || toHiveType.equals(HIVE_FLOAT) || toHiveType.equals(HIVE_DOUBLE);
-        }
-
-        return canCoerceForList(fromHiveType, toHiveType) || canCoerceForMap(fromHiveType, toHiveType) || canCoerceForStruct(fromHiveType, toHiveType);
+        return canCoerceForPrimitive(fromHiveType, toHiveType) ||
+                canCoerceForList(fromHiveType, toHiveType) ||
+                canCoerceForMap(fromHiveType, toHiveType) ||
+                canCoerceForStruct(fromHiveType, toHiveType);
     }
 
     private boolean canCoerceForMap(HiveType fromHiveType, HiveType toHiveType)
@@ -113,17 +190,49 @@ public class HiveCoercionPolicy
         List<HiveType> fromFieldTypes = extractStructFieldTypes(fromHiveType);
         List<HiveType> toFieldTypes = extractStructFieldTypes(toHiveType);
         // Rule:
-        // * Fields may be added or dropped from the end.
-        // * For all other field indices, the corresponding fields must have
-        //   the same name, and the type must be coercible.
-        for (int i = 0; i < min(fromFieldTypes.size(), toFieldTypes.size()); i++) {
-            if (!fromFieldNames.get(i).equals(toFieldNames.get(i))) {
-                return false;
-            }
-            if (!fromFieldTypes.get(i).equals(toFieldTypes.get(i)) && !canCoerce(fromFieldTypes.get(i), toFieldTypes.get(i))) {
-                return false;
+        // * Fields may be added or dropped.
+        // * A field with a given name must be of the same type or coercible.
+        for (int toIdx = 0; toIdx < toFieldTypes.size(); toIdx++) {
+            int fromIdx = fromFieldNames.indexOf(toFieldNames.get(toIdx));
+            if (fromIdx >= 0) {
+                HiveType fromType = fromFieldTypes.get(fromIdx);
+                HiveType toType = toFieldTypes.get(toIdx);
+                if (!fromType.equals(toType) && !canCoerce(fromType, toType)) {
+                    return false;
+                }
             }
         }
         return true;
+    }
+
+    private boolean canCoerceForPrimitive(HiveType fromHiveType, HiveType toHiveType)
+    {
+        Type fromType = typeManager.getType(fromHiveType.getTypeSignature());
+        Type toType = typeManager.getType(toHiveType.getTypeSignature());
+        if (fromType instanceof VarcharType) {
+            return toHiveType.equals(HIVE_BYTE) || toHiveType.equals(HIVE_SHORT) || toHiveType.equals(HIVE_INT) || toHiveType.equals(HIVE_LONG);
+        }
+        if (toType instanceof VarcharType) {
+            return fromHiveType.equals(HIVE_BYTE) || fromHiveType.equals(HIVE_SHORT) || fromHiveType.equals(HIVE_INT) || fromHiveType.equals(HIVE_LONG);
+        }
+        if (fromHiveType.equals(HIVE_BYTE)) {
+            return toHiveType.equals(HIVE_SHORT) || toHiveType.equals(HIVE_INT) || toHiveType.equals(HIVE_LONG);
+        }
+        if (fromHiveType.equals(HIVE_SHORT)) {
+            return toHiveType.equals(HIVE_INT) || toHiveType.equals(HIVE_LONG);
+        }
+        if (fromHiveType.equals(HIVE_INT)) {
+            return toHiveType.equals(HIVE_LONG);
+        }
+        if (fromHiveType.equals(HIVE_FLOAT)) {
+            return toHiveType.equals(HIVE_DOUBLE) || toType instanceof DecimalType;
+        }
+        if (fromHiveType.equals(HIVE_DOUBLE)) {
+            return toHiveType.equals(HIVE_FLOAT) || toType instanceof DecimalType;
+        }
+        if (fromType instanceof DecimalType) {
+            return toType instanceof DecimalType || toHiveType.equals(HIVE_FLOAT) || toHiveType.equals(HIVE_DOUBLE);
+        }
+        return false;
     }
 }

@@ -13,7 +13,11 @@
  */
 package io.prestosql.plugin.hive;
 
+import java.util.Optional;
+
 public interface CoercionPolicy
 {
     boolean canCoerce(HiveType fromType, HiveType toType);
+
+    Optional<HiveType> coercionMiddleGround(HiveType fromType, HiveType toType);
 }

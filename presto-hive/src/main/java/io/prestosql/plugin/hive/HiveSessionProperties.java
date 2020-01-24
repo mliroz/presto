@@ -69,6 +69,7 @@ public final class HiveSessionProperties
     private static final String RESPECT_TABLE_FORMAT = "respect_table_format";
     private static final String CREATE_EMPTY_BUCKET_FILES = "create_empty_bucket_files";
     private static final String PARQUET_USE_COLUMN_NAME = "parquet_use_column_names";
+    private static final String PARQUET_USE_NAME_BASED_SCHEMA_EVOLUTION = "parquet_use_name_based_schema_evolution";
     private static final String PARQUET_FAIL_WITH_CORRUPTED_STATISTICS = "parquet_fail_with_corrupted_statistics";
     private static final String PARQUET_MAX_READ_BLOCK_SIZE = "parquet_max_read_block_size";
     private static final String PARQUET_WRITER_BLOCK_SIZE = "parquet_writer_block_size";
@@ -259,6 +260,11 @@ public final class HiveSessionProperties
                         PARQUET_USE_COLUMN_NAME,
                         "Parquet: Access Parquet columns using names from the file",
                         hiveConfig.isUseParquetColumnNames(),
+                        false),
+                booleanProperty(
+                        PARQUET_USE_NAME_BASED_SCHEMA_EVOLUTION,
+                        "Parquet: Use parquet column and nested type names to support schema evolutions between table and partitions",
+                        hiveConfig.isUseParquetNameBasedSchemaEvolution(),
                         false),
                 booleanProperty(
                         PARQUET_FAIL_WITH_CORRUPTED_STATISTICS,
@@ -482,6 +488,11 @@ public final class HiveSessionProperties
     public static boolean isUseParquetColumnNames(ConnectorSession session)
     {
         return session.getProperty(PARQUET_USE_COLUMN_NAME, Boolean.class);
+    }
+
+    public static boolean isUseParquetNameBasedSchemaEvolution(ConnectorSession session)
+    {
+        return session.getProperty(PARQUET_USE_NAME_BASED_SCHEMA_EVOLUTION, Boolean.class);
     }
 
     /**
