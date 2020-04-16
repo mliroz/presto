@@ -13,6 +13,7 @@
  */
 package io.prestosql.plugin.session.db;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.prestosql.plugin.session.AbstractTestSessionPropertyManager;
 import io.prestosql.plugin.session.SessionMatchSpec;
@@ -212,5 +213,26 @@ public class TestDbSessionPropertyManager
         assertEquals(sessionProperties.get("prop_2"), "val_2_2");
         assertEquals(sessionProperties.get("prop_3"), "val_3_1");
         assertEquals(sessionProperties.size(), 3);
+    }
+
+    /**
+     * A basic test for catalog session properties overrides with the {@link DbSessionPropertyManager}
+     */
+    @Test
+    public void testCatalogSessionProperties()
+    {
+        dao.insertSpecRow(1, ".*", null, null, null, 0);
+        dao.insertSessionProperty(1, "catalog_1.prop_1", "val_1");
+        dao.insertSessionProperty(1, "catalog_1.prop_2", "val_2");
+
+        dao.insertSpecRow(2, ".*", null, null, null, 1);
+        dao.insertSessionProperty(2, "catalog_1.prop_1", "val_1_bis");
+        dao.insertSessionProperty(2, "catalog_1.prop_3", "val_3");
+
+        specsProvider.refresh();
+        SessionConfigurationContext context1 = new SessionConfigurationContext("foo", Optional.empty(), ImmutableSet.of(), Optional.empty(), TEST_RG);
+        assertEquals(manager.getCatalogSessionProperties(context1),
+                ImmutableMap.of("catalog_1",
+                        ImmutableMap.of("prop_1", "val_1_bis", "prop_2", "val_2", "prop_3", "val_3")));
     }
 }

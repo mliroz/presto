@@ -20,6 +20,7 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import io.airlift.log.Logger;
 import io.prestosql.spi.session.SessionConfigurationContext;
 import org.jdbi.v3.core.mapper.RowMapper;
 import org.jdbi.v3.core.statement.StatementContext;
@@ -44,6 +45,8 @@ public class SessionMatchSpec
     private final Optional<String> queryType;
     private final Optional<Pattern> resourceGroupRegex;
     private final SessionProperties sessionProperties;
+
+    private static final Logger log = Logger.get(SessionMatchSpec.class);
 
     public static class SessionProperties
     {
@@ -178,7 +181,7 @@ public class SessionMatchSpec
         public SessionMatchSpec map(ResultSet resultSet, StatementContext context)
                 throws SQLException
         {
-            Map<String, String> sessionProperties = getProperties(
+            SessionProperties sessionProperties = getProperties(
                     Optional.ofNullable(resultSet.getString("session_property_names")),
                     Optional.ofNullable(resultSet.getString("session_property_values")));
 
@@ -188,14 +191,14 @@ public class SessionMatchSpec
                     Optional.ofNullable(resultSet.getString("client_tags")).map(tag -> Splitter.on(",").splitToList(tag)),
                     Optional.ofNullable(resultSet.getString("query_type")),
                     Optional.ofNullable(resultSet.getString("group_regex")).map(Pattern::compile),
-                    sessionProperties,
-                    new HashMap<>());
+                    sessionProperties.generalProperties,
+                    sessionProperties.catalogsProperties);
         }
 
-        private static Map<String, String> getProperties(Optional<String> names, Optional<String> values)
+        private static SessionProperties getProperties(Optional<String> names, Optional<String> values)
         {
             if (!names.isPresent()) {
-                return ImmutableMap.of();
+                return SessionProperties.empty;
             }
 
             checkArgument(values.isPresent(), "names are present, but values are not");
@@ -204,12 +207,32 @@ public class SessionMatchSpec
             checkArgument(sessionPropertyNames.size() == sessionPropertyValues.size(),
                     "The number of property names and values should be the same");
 
-            Map<String, String> sessionProperties = new HashMap<>();
+            Map<String, String> generalProperties = new HashMap<>();
+            Map<String, Map<String, String>> catalogSessionProperties = new HashMap<>();
             for (int i = 0; i < sessionPropertyNames.size(); i++) {
-                sessionProperties.put(sessionPropertyNames.get(i), sessionPropertyValues.get(i));
+                String sessionPropertyName = sessionPropertyNames.get(i);
+                String sessionPropertyValue = sessionPropertyValues.get(i);
+                String[] sessionNameSplits = sessionPropertyName.split("\\.");
+                if (sessionNameSplits.length == 1) {
+                    generalProperties.put(sessionPropertyName, sessionPropertyValue);
+                }
+                else if (sessionNameSplits.length == 2) {
+                    String catalog = sessionNameSplits[0];
+                    String propertyName = sessionNameSplits[1];
+                    catalogSessionProperties.compute(catalog, (catalogue, props) -> {
+                        if (props == null) {
+                            props = new HashMap<>();
+                        }
+                        props.put(propertyName, sessionPropertyValue);
+                        return props;
+                    });
+                }
+                else {
+                    log.error("Ignored invalid session property key: " + sessionPropertyName);
+                }
             }
 
-            return sessionProperties;
+            return new SessionProperties(generalProperties, catalogSessionProperties);
         }
     }
 }
