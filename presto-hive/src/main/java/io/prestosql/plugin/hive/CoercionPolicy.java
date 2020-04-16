@@ -13,7 +13,21 @@
  */
 package io.prestosql.plugin.hive;
 
+import java.util.Optional;
+
 public interface CoercionPolicy
 {
     boolean canCoerce(HiveType fromType, HiveType toType);
+
+    /**
+     * If coercion is not possible due to one or more invalid primitive type change: return an empty Option
+     * Otherwise return a composite schema that has:
+     * - toType structure (for all nested fields at all depths: map, array, structs) ordering included
+     * - fromType primitive types (aka: leaf types)
+     *
+     * The returned HiveType is aimed to be passed to the file format reader:
+     * - so the file reader can read the file with it's correct primitive types
+     * - be coercible to the toType thanks to leaf type coercions only
+     */
+    Optional<HiveType> coercibleIntermediate(HiveType fromType, HiveType toType);
 }

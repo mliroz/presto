@@ -329,7 +329,15 @@ public class HiveSplitManager
                 if ((tableColumns == null) || (partitionColumns == null)) {
                     throw new PrestoException(HIVE_INVALID_METADATA, format("Table '%s' or partition '%s' has null columns", tableName, partName));
                 }
-                TableToPartitionMapping tableToPartitionMapping = getTableToPartitionMapping(session, tableName, partName, tableColumns, partitionColumns);
+                TableToPartitionMapping tableToPartitionMapping;
+                // Fence feature to Parquet only (not tested for ORC)
+                if (isPartitionUseColumnNames(session) &&
+                        HiveStorageFormat.PARQUET.getSerDe().equals(partition.getStorage().getStorageFormat().getSerDe())) {
+                    tableToPartitionMapping = getCoercibleTableToPartitionMapping(tableName, partName, tableColumns, partitionColumns);
+                }
+                else {
+                    tableToPartitionMapping = getTableToPartitionMapping(session, tableName, partName, tableColumns, partitionColumns);
+                }
 
                 if (bucketProperty.isPresent()) {
                     Optional<HiveBucketProperty> partitionBucketProperty = partition.getStorage().getBucketProperty();
@@ -380,6 +388,46 @@ public class HiveSplitManager
             }
         }
         return mapColumnsByIndex(columnCoercions.build());
+    }
+
+    private TableToPartitionMapping getCoercibleTableToPartitionMapping(SchemaTableName tableName, String partName, List<Column> tableColumns, List<Column> partitionColumns)
+    {
+        ImmutableMap.Builder<Integer, HiveTypeName> columnCoercions = ImmutableMap.builder();
+
+        ImmutableMap.Builder<String, Column> partitionsColsByNameBuilder = ImmutableMap.builder();
+        for (Column partitionColumn : partitionColumns) {
+            partitionsColsByNameBuilder.put(partitionColumn.getName(), partitionColumn);
+        }
+        ImmutableMap<String, Column> partitionsColsByName = partitionsColsByNameBuilder.build();
+
+        for (int i = 0; i < tableColumns.size(); i++) {
+            final int tableIndex = i;
+            Column tableColumn = tableColumns.get(tableIndex);
+            String tableColumnName = tableColumn.getName();
+            HiveType tableType = tableColumn.getType();
+            Optional.ofNullable(partitionsColsByName.get(tableColumnName))
+                    .map(Column::getType)
+                    .ifPresent(partitionType -> {
+                        if (!tableType.equals(partitionType)) {
+                            Optional<HiveType> coercibleIntermediate = coercionPolicy.coercibleIntermediate(partitionType, tableType);
+                            if (!coercibleIntermediate.isPresent()) {
+                                throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
+                                                "There is a invalid schema change between table and partition schemas. " +
+                                                "The types are incompatible and cannot be coerced. " +
+                                                "The column '%s' in table '%s' is declared as type '%s', " +
+                                                "but partition '%s' declared column '%s' as type '%s'.",
+                                        tableColumnName,
+                                        tableName,
+                                        tableType,
+                                        partName,
+                                        tableColumnName,
+                                        partitionType));
+                            }
+                            columnCoercions.put(tableIndex, coercibleIntermediate.get().getHiveTypeName());
+                        }
+                    });
+        }
+        return new TableToPartitionMapping(Optional.empty(), columnCoercions.build());
     }
 
     private TableToPartitionMapping getTableToPartitionMappingByColumnNames(SchemaTableName tableName, String partName, List<Column> tableColumns, List<Column> partitionColumns)
