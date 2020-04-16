@@ -23,6 +23,8 @@ import javax.inject.Inject;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.util.Objects.requireNonNull;
 
@@ -58,7 +60,24 @@ public class DbSessionPropertyManager
     @Override
     public Map<String, Map<String, String>> getCatalogSessionProperties(SessionConfigurationContext context)
     {
-        // NOT IMPLEMENTED YET
-        return ImmutableMap.of();
+        List<SessionMatchSpec> sessionMatchSpecs = specsProvider.get();
+
+        return sessionMatchSpecs.stream()
+                .map(sessionMatchSpec -> sessionMatchSpec.match(context).getCatalogsProperties())
+                .flatMap(map -> map.entrySet().stream())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (a, b) -> mergeOverwriteMap(a, b)));
+    }
+
+    private static Map<String, String> mergeOverwriteMap(Map<String, String> original, Map<String, String> overwrite)
+    {
+        return Stream.of(original, overwrite)
+                .flatMap(map -> map.entrySet().stream())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (overridden, override) -> override));
     }
 }
