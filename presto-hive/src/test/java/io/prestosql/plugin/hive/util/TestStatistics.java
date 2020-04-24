@@ -13,6 +13,7 @@
  */
 package io.prestosql.plugin.hive.util;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.prestosql.plugin.hive.HiveBasicStatistics;
 import io.prestosql.plugin.hive.metastore.BooleanStatistics;
@@ -23,10 +24,15 @@ import io.prestosql.plugin.hive.metastore.HiveColumnStatistics;
 import io.prestosql.plugin.hive.metastore.IntegerStatistics;
 import io.prestosql.spi.block.Block;
 import io.prestosql.spi.statistics.ColumnStatisticType;
+import io.prestosql.spi.type.DateType;
+import io.prestosql.spi.type.IntegerType;
+import io.prestosql.spi.type.Type;
+import io.prestosql.spi.type.VarcharType;
 import org.testng.annotations.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -41,6 +47,7 @@ import static io.prestosql.plugin.hive.metastore.HiveColumnStatistics.createInte
 import static io.prestosql.plugin.hive.util.Statistics.ReduceOperator.ADD;
 import static io.prestosql.plugin.hive.util.Statistics.ReduceOperator.SUBTRACT;
 import static io.prestosql.plugin.hive.util.Statistics.createHiveColumnStatistics;
+import static io.prestosql.plugin.hive.util.Statistics.getConvertedPartitionValues;
 import static io.prestosql.plugin.hive.util.Statistics.merge;
 import static io.prestosql.plugin.hive.util.Statistics.reduce;
 import static io.prestosql.spi.predicate.Utils.nativeValueToBlock;
@@ -310,5 +317,28 @@ public class TestStatistics
     {
         assertThat(merge(first, second)).isEqualTo(expected);
         assertThat(merge(second, first)).isEqualTo(expected);
+    }
+
+    @Test
+    public void testGetConvertedPartitionValues()
+    {
+        List<String> partitionColumns = ImmutableList.of("column2", "column3");
+
+        Map<String, Type> columnTypes1 = ImmutableMap.of(
+                "column1", IntegerType.INTEGER,
+                "column2", DateType.DATE,
+                "column3", IntegerType.INTEGER);
+        List<String> partitionValues1 = ImmutableList.of("2020-01-01", "09");
+        List<String> expectedPartitionValues1 = ImmutableList.of("2020-01-01", "9");
+
+        Map<String, Type> columnTypes2 = ImmutableMap.of(
+                "column1", IntegerType.INTEGER,
+                "column2", VarcharType.VARCHAR,
+                "column3", VarcharType.VARCHAR);
+        List<String> partitionValues2 = ImmutableList.of("2020-01-01", "09");
+        List<String> expectedPartitionValues2 = ImmutableList.of("2020-01-01", "09");
+
+        assertThat(getConvertedPartitionValues(partitionColumns, columnTypes1, partitionValues1).equals(expectedPartitionValues1));
+        assertThat(getConvertedPartitionValues(partitionColumns, columnTypes1, partitionValues2).equals(expectedPartitionValues2));
     }
 }

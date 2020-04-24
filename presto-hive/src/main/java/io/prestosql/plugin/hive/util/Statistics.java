@@ -38,6 +38,7 @@ import org.joda.time.DateTimeZone;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -76,6 +77,7 @@ import static io.prestosql.spi.type.TimestampType.TIMESTAMP;
 import static io.prestosql.spi.type.TinyintType.TINYINT;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static org.joda.time.DateTimeZone.UTC;
 
 public final class Statistics
 {
@@ -308,6 +310,30 @@ public final class Statistics
         else {
             throw new IllegalArgumentException("Unexpected type: " + type);
         }
+    }
+
+    public static List<String> getConvertedPartitionValues(
+            List<String> partitionColumns,
+            Map<String, Type> columnTypes,
+            List<String> partitionValues)
+    {
+        List<Type> partitionColumnTypes = partitionColumns.stream()
+                .map(columnTypes::get)
+                .collect(toImmutableList());
+
+        List<Block> partitionValuesBlocks = new ArrayList<>();
+        for (int i = 0; i < partitionColumns.size(); i++) {
+            String partitionColumnName = partitionColumns.get(i);
+            Type partitionColumnType = columnTypes.get(partitionColumnName);
+            String partitionValue = partitionValues.get(i);
+            Block block = HiveUtil.parsePartitionValue(partitionColumnName, partitionValue, partitionColumnType, UTC).asBlock();
+            partitionValuesBlocks.add(block);
+        }
+
+        Page partitionColumnsPage = new Page(1, partitionValuesBlocks.toArray(new Block[] {}));
+        List<String> convertedPartitionValues = HiveWriteUtils.createPartitionValues(partitionColumnTypes, partitionColumnsPage, 0);
+
+        return convertedPartitionValues;
     }
 
     public static Map<List<String>, ComputedStatistics> createComputedStatisticsToPartitionMap(
