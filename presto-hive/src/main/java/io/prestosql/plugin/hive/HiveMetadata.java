@@ -216,6 +216,7 @@ import static io.prestosql.plugin.hive.util.Statistics.ReduceOperator.ADD;
 import static io.prestosql.plugin.hive.util.Statistics.createComputedStatisticsToPartitionMap;
 import static io.prestosql.plugin.hive.util.Statistics.createEmptyPartitionStatistics;
 import static io.prestosql.plugin.hive.util.Statistics.fromComputedStatistics;
+import static io.prestosql.plugin.hive.util.Statistics.getConvertedPartitionValues;
 import static io.prestosql.plugin.hive.util.Statistics.reduce;
 import static io.prestosql.plugin.hive.util.SystemTables.createSystemTable;
 import static io.prestosql.spi.StandardErrorCode.INVALID_ANALYZE_PROPERTY;
@@ -1185,7 +1186,8 @@ public class HiveMetadata
 
             int usedComputedStatistics = 0;
             for (List<String> partitionValues : partitionValuesList) {
-                ComputedStatistics collectedStatistics = computedStatisticsMap.get(partitionValues);
+                List<String> partitionValuesConverted = getConvertedPartitionValues(partitionColumnNames, columnTypes, partitionValues);
+                ComputedStatistics collectedStatistics = computedStatisticsMap.get(partitionValuesConverted);
                 if (collectedStatistics == null) {
                     partitionStatistics.put(partitionValues, emptyPartitionStatistics.get());
                 }
